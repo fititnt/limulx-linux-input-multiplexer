@@ -1,2 +1,19 @@
 # linux-input-multiplexer
-Linux input multiplexer with independent per-device auto-repeat. Bypasses compositor Seat limitations to enable true Windows-like raw input and asynchronous/fast multi-device response (TL;DR: also good competitive gaming).
+Linux input multiplexer with independent per-device auto-repeat.
+Bypasses compositor Seat limitations to enable true Windows-like raw input
+and asynchronous/fast multi-device response
+(TL;DR: also good competitive gaming).
+
+
+## Finding your inout devices
+
+```
+# 1.
+cat /proc/bus/input/devices
+
+# 2. (recommended)
+sudo evtest
+
+# 3. Persystent naming
+ls -l /dev/input/by-id/
+```
