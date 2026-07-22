@@ -5,6 +5,17 @@ and asynchronous/fast multi-device response
 (TL;DR: also good competitive gaming).
 
 
+## Compile
+
+```
+#...
+```
+
+
+```
+RUST_LOG=debug cargo run
+```
+
 ## Finding your inout devices
 
 ```
@@ -17,3 +28,16 @@ sudo evtest
 # 3. Persystent naming
 ls -l /dev/input/by-id/
 ```
+
+
+<!--
+
+sudo RUST_LOG=debug ./target/debug/input_multiplexer
+
+
+# 1. Build the debug version
+cargo build
+
+# 2. Run the generated binary with root privileges and the logger enabled
+sudo RUST_LOG=debug ./target/debug/linux-input-multiplexer
+-->
