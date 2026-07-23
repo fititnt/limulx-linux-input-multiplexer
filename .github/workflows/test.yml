@@ -1,4 +1,7 @@
-name: Test
+# @TODO This is a placeholder workflow. (maybe) update if get complex in the future if necessary.
+#       For now will only check very obvious errors
+
+name: Test (placeholder)
 
 on:
   push:

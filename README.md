@@ -1,11 +1,64 @@
-# linux-input-multiplexer
+# LIMulx Linux input multiplexer/ LIMulx Linux Multiplexer Virtual Keyboard
 Linux input multiplexer with independent per-device auto-repeat.
 Bypasses compositor Seat limitations to enable true Windows-like raw input
 and asynchronous/fast multi-device response
 (TL;DR: also good competitive gaming).
 
 
+> **TL;DR:** Using this program while holding down "W" on a keyboard,
+> side button "7" on a gaming mouse, and "F13" on a footswitch will output
+> "W 7 F13 W 7 F13..." instead of only "F13 F13 F13...".
+> This makes desktop Linux behave more like Windows,
+> without requiring cross-platform apps or games to rework their internal input logic.
+
+---
+
+## About LIMulx
+
+### What This App Does
+
+Applications (most commonly competitive games) that expect fast and reactive inputs often exhibit different behavior between Windows and Linux.
+On Windows, developers typically optimize for performance using the Raw Input API.
+On Linux, the input subsystem accurately reports *which* keys are pressed or released across multiple devices,
+but the display server (X11/Wayland) will typically only generate automatic "repeat" events for the *most recently pressed* key.
+
+**To developers:** To mimic Windows behavior natively,
+Linux applications (which already receive raw key press/release events)
+need to manually compute and generate repeat events for all held keys,
+rather than relying on the OS's single-key repeat timer.
+If your application does this, your users do not need this app.
+
+**To Linux users:** This app creates a virtual keyboard named `LIMulx Linux Multiplexer Virtual Keyboard` which computes the final result of multiple hardware inputs you select
+(e.g., your footswitch, gaming mouse side buttons, gamepad, main keyboard).
+It reports the initial key presses,
+and then (while the buttons are held) fires repeat events for all of them,
+alternating between the different hardware inputs instead of just repeating the last one.
+
+#### Is this a macro? Does it offer an unfair advantage?
+
+This app is open-source, works exactly as described above,
+and is intended solely as a fallback for apps that do not handle Linux Human Interface Devices (HID) properly.
+
+Other than adjusting the repeat rate (a feature already built into the OS),
+it does not allow the end user to customize behavior. It stops repeating as soon as the physical hardware reports a key release.
+
+**To developers:** If your software already handles Linux inputs correctly and you are tuning anti-cheat measures,
+you can check for this virtual keyboard's device name and instruct the user to disable it before running your game.
+
+#### Can this steal my information?
+
+This software is written in Rust by @fititnt.
+It can be reviewed and compiled from source without needing to download the pre-compiled binaries from GitHub (which are provided purely for the sake of simplicity).
+
+While it is generally a bad practice to install executables from untrusted sources,
+this one requires special caution because it reads keystrokes.
+Please do not install binaries from unauthorized forks you dont already know the authors,
+as a malicious actor could alter the code or add an insecure dependency to log your inputs.
+
+
 ## Quickstart usage
+
+@TODO improve this part
 
 ```
 # compile release version

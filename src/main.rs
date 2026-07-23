@@ -107,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut virtual_device = VirtualDeviceBuilder::new()?
-        .name("LIMux Linux Multiplexer Virtual Keyboard")
+        .name("LIMulx Linux Multiplexer Virtual Keyboard")
         .with_keys(&keys)?
         .build()?;
 
