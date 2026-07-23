@@ -1,0 +1,18 @@
+# linux-input-multiplexer/config.example.toml
+
+# Delays in milliseconds
+initial_delay_ms = 200
+rapid_fire_delay_ms = 100
+
+
+[[devices]]
+path = "/dev/input/event12" # Main Keyboard
+# rapid_fire_keys = [275, 276] # Optional: Only apply rapid-fire to these specific key codes
+
+[[devices]]
+path = "/dev/input/event5" # Mouse Redragon
+# rapid_fire_keys = [275, 276] # Optional: Only apply rapid-fire to these specific key codes
+
+[[devices]]
+path = "/dev/input/event12" # Footswitch
+# If rapid_fire_keys is omitted, it defaults to applying to all keys on this device.
