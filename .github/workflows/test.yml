@@ -1,0 +1,35 @@
+name: Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-evdev:
+    name: Run Unit and Integration Tests
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup uinput for virtual device simulation
+        run: |
+          # Load the uinput kernel module
+          sudo modprobe uinput
+          
+          # Grant read/write permissions to the runner user
+          sudo chmod 666 /dev/uinput
+          
+          # Optional: If your tests need to read physical device mocks from /dev/input/, 
+          # you might need to create dummy event devices or grant permissions to the input group.
+
+      - name: Run tests
+        # We run tests with sudo preserving the environment (PATH) because grabbing 
+        # exclusive access (EVIOCGRAB) or reading /dev/input/event* usually requires root.
+        run: sudo -E env "PATH=$PATH" cargo test --verbose
