@@ -6,7 +6,7 @@ rapid_fire_delay_ms = 100
 
 
 [[devices]]
-path = "/dev/input/event12" # Main Keyboard
+path = "/dev/input/event10" # Main Keyboard
 # rapid_fire_keys = [275, 276] # Optional: Only apply rapid-fire to these specific key codes
 
 [[devices]]

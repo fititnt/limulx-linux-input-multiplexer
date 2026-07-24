@@ -1,6 +1,6 @@
 use evdev::uinput::VirtualDeviceBuilder;
 use evdev::{Device, EventType, InputEvent, Key};
-use std::collections::HashMap;
+// Removed HashMap import as it is no longer needed
 use std::sync::Arc;
 use log::{debug, info};
 use tokio::sync::{mpsc, Mutex};
@@ -140,7 +140,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut event_stream = device.into_event_stream().expect("Failed to create event stream");
 
             // Manages the per-key repeat timers for this device.
-            let active_timers: Arc<Mutex<HashMap<u16, JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
+            // CHANGED: Instead of a HashMap, track at most one active key and its timer to mimic typical input handle on Windows
+            let active_timer: Arc<Mutex<Option<(u16, JoinHandle<()>)>>> = Arc::new(Mutex::new(None));
 
             info!("Listening to device: {}", path);
 
@@ -156,13 +157,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         None => true,
                     };
 
-                    let mut timers = active_timers.lock().await;
+                    // CHANGED: Lock the single timer slot instead of the HashMap.
+                    let mut timer_lock = active_timer.lock().await;
 
                     if value == 1 { // Only real key down
                         // Send original keydown
                         let _ = tx_clone.send(UinputMsg::Event(ev)).await;
 
                         if should_rapid_fire {
+                            // ADDED: Abort the existing repeating key on this device, if any, so only the last held key repeats.
+                            if let Some((_, handle)) = timer_lock.take() {
+                                handle.abort();
+                            }
+
                             let tx_timer = tx_clone.clone();
                             let timer_handle = tokio::spawn(async move {
                                 // Await INITIAL_DELAY. If released before this, will not rapid fire
@@ -181,15 +188,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::SYNCHRONIZATION, 0, 0))).await;
                                 }
                             });
-                            timers.insert(key_code, timer_handle);
+                            // CHANGED: Store the new key code and its timer as the active one.
+                            *timer_lock = Some((key_code, timer_handle));
+
                         }
                     } else if value == 0 { // Only real key up
                         debug!("REAL              : [{:?}] Key UP", key_code);
 
-                        // Cancels the timer if it exists
-                        if let Some(handle) = timers.remove(&key_code) {
-                            handle.abort();
-                            debug!("VIRTUAL RAPID-FIRE: [{:?}] Aborted", key_code);
+                        // CHANGED: Only abort if the released key matches the currently repeating key.
+                        if let Some((active_key, handle)) = timer_lock.take() {
+                            if active_key == key_code {
+                                handle.abort();
+                                debug!("VIRTUAL RAPID-FIRE: [{:?}] Aborted", key_code);
+                            } else {
+                                // ADDED: It was a different key, put the timer back to keep repeating the active one.
+                                *timer_lock = Some((active_key, handle));
+                            }
                         }
                         // Send the original keyup
                         let _ = tx_clone.send(UinputMsg::Event(ev)).await;

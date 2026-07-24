@@ -7,11 +7,23 @@ and asynchronous/fast multi-device response
 
 > **TL;DR:** Using this program while holding down "W" on a keyboard,
 > side button "7" on a gaming mouse, and "F13" on a footswitch will output
-> "W 7 F13 W 7 F13..." instead of only "F13 F13 F13...".
+> "W 7 F13 W 7 F13 W 7 F13 W 7 F13..." instead of only "F13 F13 F13 F13...".
 > This makes desktop Linux behave more like Windows,
-> without requiring cross-platform apps or games to rework their internal input logic.
+> without requiring cross-platform apps or games to (which would be a good idea) rework their internal input logic on Linux.
 
----
+
+```bash
+# 1. Download the latest release
+# check https://github.com/fititnt/limulx-linux-input-multiplexer/releases for the version. As example:
+wget https://github.com/fititnt/limulx-linux-input-multiplexer/releases/download/v0.2.0/linux-input-multiplexer-amd64
+
+# 2. Make the downloaded binary executable
+chmod +x linux-input-multiplexer-amd64
+
+
+# 3. Run the application (replace the /dev/input/eventX paths with your own)
+sudo ./linux-input-multiplexer-amd64 -v --initial-delay 200 --rapid-fire-delay 100 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
+```
 
 ## About LIMulx
 
@@ -65,7 +77,7 @@ as a malicious actor could alter the code or add an insecure dependency to log y
 cargo build --release
 
 # Example usage with command line arguments and -v verbose
-sudo ./target/release/linux-input-multiplexer -v --initial-delay 250 --rapid-fire-delay 60 -d /dev/input/event5 -d /dev/input/event12
+sudo ./target/release/linux-input-multiplexer -v --initial-delay 200 --rapid-fire-delay 100 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
 
 # Example usage with command line arguments and -v verbose and arguments saved as file
 sudo ./target/release/linux-input-multiplexer -v -c config.example.toml
@@ -96,7 +108,7 @@ sudo RUST_LOG=debug ./target/debug/linux-input-multiplexer -c config.example.tom
 
 
 cargo build --release
-sudo ./target/release/linux-input-multiplexer -v --initial-delay 250 --rapid-fire-delay 60 -d /dev/input/event5 -d /dev/input/event12
+sudo ./target/release/linux-input-multiplexer -v --initial-delay 250 --rapid-fire-delay 60 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
 
 -->
 
