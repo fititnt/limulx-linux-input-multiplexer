@@ -1,5 +1,6 @@
 use evdev::uinput::VirtualDeviceBuilder;
 use evdev::{Device, EventType, InputEvent, Key};
+use std::collections::HashMap;
 use std::sync::Arc;
 use log::{debug, info};
 use tokio::sync::{mpsc, Mutex};
@@ -101,6 +102,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (tx, mut rx) = mpsc::channel::<UinputMsg>(1024);
 
+    // Global tracking of active key holds across all devices (Key Code -> Device Path)
+    let global_pressed_keys: Arc<Mutex<HashMap<u16, String>>> = Arc::new(Mutex::new(HashMap::new()));
+
     // 3. Configure the virtual uinput
     let mut keys = evdev::AttributeSet::<Key>::new();
     // Keys to watch for
@@ -131,6 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tx_clone = tx.clone();
         let path = device_config.path.clone();
         let rapid_fire_keys = device_config.rapid_fire_keys.clone();
+        let global_pressed_keys = global_pressed_keys.clone();
 
         let handle = tokio::spawn(async move {
             let mut device = Device::open(&path).unwrap_or_else(|_| panic!("Failed to open {}", path));
@@ -142,7 +147,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut event_stream = device.into_event_stream().expect("Failed to create event stream");
 
             // Manages the per-key repeat timers for this device.
-            // Instead of a HashMap, track at most one active key and its timer to mimic standard OS behavior.
             let active_timer: Arc<Mutex<Option<(u16, JoinHandle<()>)>>> = Arc::new(Mutex::new(None));
 
             info!("Listening to device: {}", path);
@@ -167,70 +171,80 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut timer_lock = active_timer.lock().await;
 
                     if value == 1 { // Only real key down
-                        // ADDED: Missing Key DOWN log
                         debug!("REAL              : [{:?}] Key DOWN", key_code);
+
+                        // Register key press in global state tracker
+                        {
+                            let mut global_keys = global_pressed_keys.lock().await;
+                            global_keys.insert(key_code, path.clone());
+                        }
 
                         // Send original keydown
                         let _ = tx_clone.send(UinputMsg::Event(ev)).await;
 
                         if should_rapid_fire {
-                            // Abort the existing repeating key on this device, if any, so only the last held key repeats.
                             if let Some((_, handle)) = timer_lock.take() {
                                 handle.abort();
                             }
 
                             let tx_timer = tx_clone.clone();
                             let timer_handle = tokio::spawn(async move {
-                                // Await INITIAL_DELAY. If released before this, will not rapid fire
                                 sleep(initial_delay).await;
                                 debug!("VIRTUAL RAPID-FIRE: [{:?}] Started", key_code);
 
                                 loop {
-                                    sleep(rapid_fire_delay).await;
+                                    // sleep(rapid_fire_delay).await;
                                     // Virtual Key Up
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::KEY, key_code, 0))).await;
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::SYNCHRONIZATION, 0, 0))).await;
                                     
-                                    sleep(rapid_fire_delay).await;
                                     // Virtual Key Down
+                                    sleep(rapid_fire_delay).await;
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::KEY, key_code, 1))).await;
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::SYNCHRONIZATION, 0, 0))).await;
                                 }
                             });
-                            // Store the new key code and its timer as the active one.
                             *timer_lock = Some((key_code, timer_handle));
                         }
                     } else if value == 0 { // Only real key up
                         debug!("REAL              : [{:?}] Key UP", key_code);
 
-                        // Only abort if the released key matches the currently repeating key.
+                        // Remove key press from global state tracker
+                        {
+                            let mut global_keys = global_pressed_keys.lock().await;
+                            global_keys.remove(&key_code);
+                        }
+
                         if let Some((active_key, handle)) = timer_lock.take() {
                             if active_key == key_code {
                                 handle.abort();
                                 debug!("VIRTUAL RAPID-FIRE: [{:?}] Aborted", key_code);
                             } else {
-                                // It was a different key, put the timer back to keep repeating the active one.
                                 *timer_lock = Some((active_key, handle));
                             }
                         }
                         // Send the original keyup
                         let _ = tx_clone.send(UinputMsg::Event(ev)).await;
-                    } else if value == 2 { // ADDED: Physical device repeat
+                    } else if value == 2 { // Physical device repeat
                         if !should_rapid_fire {
-
-                            // @TODO only print this part of when code REPEAD with higher verbosity parameter
-                            // debug!("REAL              : [{:?}] Key REPEAT", key_code);
-
-                            // To force X11/Wayland to acknowledge interleaved repeats from multiple physical keyboards,
-                            // we translate the physical hardware's repeat (2) into a fresh Virtual Up (0) and Down (1).
-                            let _ = tx_clone.send(UinputMsg::Event(InputEvent::new(EventType::KEY, key_code, 0))).await;
-                            let _ = tx_clone.send(UinputMsg::Event(InputEvent::new(EventType::SYNCHRONIZATION, 0, 0))).await;
-                            let _ = tx_clone.send(UinputMsg::Event(InputEvent::new(EventType::KEY, key_code, 1))).await;
-                            // The physical hardware's EV_SYN will follow and automatically flush this new Down state.
+                            // Check how many keys are held across all devices
+                            let global_keys = global_pressed_keys.lock().await;
+                            
+                            if global_keys.len() <= 1 {
+                                // SINGLE KEY ACTIVE: Pass native hardware repeat (value 2) clean proxying
+                                debug!("REAL              : [{:?}] Key REPEAT (Native Proxy)", key_code);
+                                let _ = tx_clone.send(UinputMsg::Event(ev)).await;
+                            } else {
+                                // MULTIPLE KEYS ACTIVE: Force synthetic Up/Down to interleave cross-device inputs
+                                debug!("REAL              : [{:?}] Key REPEAT (Interleaved Burst)", key_code);
+                                let _ = tx_clone.send(UinputMsg::Event(InputEvent::new(EventType::KEY, key_code, 0))).await;
+                                let _ = tx_clone.send(UinputMsg::Event(InputEvent::new(EventType::SYNCHRONIZATION, 0, 0))).await;
+                                let _ = tx_clone.send(UinputMsg::Event(InputEvent::new(EventType::KEY, key_code, 1))).await;
+                            }
                         }
                     }
                 } else {
-                    // Passes through other events (SYN, REL, ABS) intact.
+                    // Passes through other events (SYN, REL, ABS, MSC) intact.
                     let _ = tx_clone.send(UinputMsg::Event(ev)).await;
                 }
             }

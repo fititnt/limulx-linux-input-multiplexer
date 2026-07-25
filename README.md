@@ -1,7 +1,7 @@
 # LIMulx Linux input multiplexer (v0.3.0 preview)
 Linux input multiplexer with independent per-device auto-repeat.
 Bypasses compositor Seat limitations to enable true Windows-like raw input
-and asynchronous/fast multi-device response
+and asynchronous multi-device response
 (TL;DR: also good competitive gaming).
 
 
@@ -15,7 +15,7 @@ and asynchronous/fast multi-device response
 ```bash
 ## 1. Download the latest release
 # check https://github.com/fititnt/limulx-linux-input-multiplexer/releases for the version. As example:
-wget https://github.com/fititnt/limulx-linux-input-multiplexer/releases/download/v0.3.0/linux-input-multiplexer-amd64
+wget https://github.com/fititnt/limulx-linux-input-multiplexer/releases/download/v0.3.0/limulx-linux-input-multiplexer-amd64
 
 ## 2. Make the downloaded binary executable
 chmod +x limulx-linux-input-multiplexer-amd64
@@ -111,7 +111,8 @@ sudo RUST_LOG=debug ./target/debug/limulx-linux-input-multiplexer r -c config.ex
 
 
 cargo build --release
-sudo ./target/release/limulx-linux-input-multiplexer r -v --initial-delay 250 --rapid-fire-delay 60 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
+sudo ./target/release/limulx-linux-input-multiplexer -v --initial-delay 250 --rapid-fire-delay 60 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
+sudo ./target/release/limulx-linux-input-multiplexer -v --initial-delay 200 --rapid-fire-delay -1 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
 
 On Windows:
 SPI_SETKEYBOARDSPEED; from 0 (2.5 r/s) to 31 (30/s); maximum on windows around 30.3r/s or 33ms repeat
