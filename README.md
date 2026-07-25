@@ -15,14 +15,13 @@ and asynchronous/fast multi-device response
 ```bash
 # 1. Download the latest release
 # check https://github.com/fititnt/limulx-linux-input-multiplexer/releases for the version. As example:
-wget https://github.com/fititnt/limulx-linux-input-multiplexer/releases/download/v0.2.0/linux-input-multiplexer-amd64
+wget https://github.com/fititnt/limulx-linux-input-multiplexer/releases/download/v0.3.0/linux-input-multiplexer-amd64
 
 # 2. Make the downloaded binary executable
-chmod +x linux-input-multiplexer-amd64
-
+chmod +x limulx-linux-input-multiplexer-amd64
 
 # 3. Run the application (replace the /dev/input/eventX paths with your own)
-sudo ./linux-input-multiplexer-amd64 -v --initial-delay 200 --rapid-fire-delay 100 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
+sudo ./limulx-linux-input-multiplexer-amd64 -v --initial-delay 200 --rapid-fire-delay 50 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
 ```
 
 ## About LIMulx
@@ -77,10 +76,10 @@ as a malicious actor could alter the code or add an insecure dependency to log y
 cargo build --release
 
 # Example usage with command line arguments and -v verbose
-sudo ./target/release/linux-input-multiplexer -v --initial-delay 200 --rapid-fire-delay 100 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
+sudo ./target/release/limulx-linux-input-multiplexer r -v --initial-delay 250 --rapid-fire-delay 40 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
 
 # Example usage with command line arguments and -v verbose and arguments saved as file
-sudo ./target/release/linux-input-multiplexer -v -c config.example.toml
+sudo ./target/release/limulx-linux-input-multiplexer r -v -c config.example.toml
 ```
 
 ## Finding your inout devices
@@ -103,12 +102,17 @@ sudo RUST_LOG=debug ./target/debug/input_multiplexer
 
 # 1. Build the debug version
 cargo build
-sudo RUST_LOG=debug ./target/debug/linux-input-multiplexer -c config.example.toml
+sudo RUST_LOG=debug ./target/debug/limulx-linux-input-multiplexer r -c config.example.toml
 
 
 
 cargo build --release
-sudo ./target/release/linux-input-multiplexer -v --initial-delay 250 --rapid-fire-delay 60 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
+sudo ./target/release/limulx-linux-input-multiplexer r -v --initial-delay 250 --rapid-fire-delay 60 -d /dev/input/event5 -d /dev/input/event12 -d /dev/input/event10
+
+On Windows:
+SPI_SETKEYBOARDSPEED; from 0 (2.5 r/s) to 31 (30/s); maximum on windows around 30.3r/s or 33ms repeat
+SPI_SETKEYBOARDDELAY: 0 (250s) to 3 (1s)
+
 
 -->
 

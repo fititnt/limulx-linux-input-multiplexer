@@ -1,5 +1,5 @@
 [package]
-name = "linux-input-multiplexer"
+name = "limulx-linux-input-multiplexer"
 version = "0.3.0"
 edition = "2021"
 

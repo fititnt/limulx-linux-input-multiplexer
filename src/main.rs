@@ -177,7 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 debug!("VIRTUAL RAPID-FIRE: [{:?}] Started", key_code);
 
                                 loop {
-                                    sleep(rapid_fire_delay).await;
+                                    // sleep(rapid_fire_delay).await;
                                     // Virtual Key Up
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::KEY, key_code, 0))).await;
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::SYNCHRONIZATION, 0, 0))).await;
@@ -188,6 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::SYNCHRONIZATION, 0, 0))).await;
                                 }
                             });
+
                             // CHANGED: Store the new key code and its timer as the active one.
                             *timer_lock = Some((key_code, timer_handle));
 
