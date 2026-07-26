@@ -1,6 +1,6 @@
 use evdev::uinput::VirtualDeviceBuilder;
 use evdev::{Device, EventType, InputEvent, Key};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use log::{debug, info};
 use tokio::sync::{mpsc, Mutex};
@@ -9,7 +9,24 @@ use tokio::time::{sleep, Duration};
 use tokio_stream::StreamExt;
 use serde::Deserialize;
 use std::fs;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+
+/// Movement Hotkey Layout Presets
+/// 
+/// Arrow keys (KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT) are ALWAYS included regardless of preset.
+///
+/// Layouts:
+/// - `awsd`: WASD movement keys (KEY_W, KEY_A, KEY_S, KEY_D).
+/// - `awsdqezc`: WASD + Diagonal movement keys (KEY_W, KEY_A, KEY_S, KEY_D, KEY_Q, KEY_E, KEY_Z, KEY_C).
+/// - `numpad`: Numpad movement keys (KEY_KP1, KEY_KP2, KEY_KP3, KEY_KP4, KEY_KP5, KEY_KP6, KEY_KP7, KEY_KP8, KEY_KP9).
+///   Note: Explicitly uses Numpad keycodes to prevent conflicts with main-row digits.
+#[derive(ValueEnum, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum MoveHotkeysMode {
+    Awsd,
+    Awsdqezc,
+    Numpad,
+}
 
 /// LIMux - Linux Input Multiplexer
 #[derive(Parser, Debug)]
@@ -23,13 +40,21 @@ struct Args {
     #[arg(short, long)]
     verbose: bool,
 
-    /// Initial delay in milliseconds (CLI mode). Set to <= 0 to disable virtual rapid-fire and use OS native repeat.
+    /// Initial delay in milliseconds (CLI mode). Set to <= 0 to disable virtual rapid-fire.
     #[arg(long, allow_hyphen_values = true)]
     initial_delay: Option<i64>,
 
-    /// Rapid fire delay in milliseconds (CLI mode). Set to <= 0 to disable virtual rapid-fire and use OS native repeat.
+    /// Rapid fire delay for default/non-movement keys in milliseconds. Default: 250ms.
     #[arg(long, allow_hyphen_values = true)]
-    rapid_fire_delay: Option<i64>,
+    clock_default: Option<i64>,
+
+    /// Rapid fire delay for movement keys in milliseconds. Default: 40ms.
+    #[arg(long, allow_hyphen_values = true)]
+    clock_move: Option<i64>,
+
+    /// Preset for movement hotkeys that use `clock-move` speed. Options: awsd, awsdqezc, numpad.
+    #[arg(long, value_enum)]
+    move_hotkeys: Option<MoveHotkeysMode>,
 
     /// Add a device path to multiplex (can be used multiple times, e.g., -d /dev/input/event5 -d /dev/input/event12)
     #[arg(short, long = "device")]
@@ -40,9 +65,16 @@ struct Args {
 #[derive(Deserialize, Debug, Clone)]
 struct Config {
     initial_delay_ms: i64,
-    rapid_fire_delay_ms: i64,
+    #[serde(default = "default_clock_default")]
+    clock_default_ms: i64,
+    #[serde(default = "default_clock_move")]
+    clock_move_ms: i64,
+    move_hotkeys: Option<MoveHotkeysMode>,
     devices: Vec<DeviceConfig>,
 }
+
+fn default_clock_default() -> i64 { 250 }
+fn default_clock_move() -> i64 { 40 }
 
 #[derive(Deserialize, Debug, Clone)]
 struct DeviceConfig {
@@ -54,6 +86,53 @@ struct DeviceConfig {
 #[derive(Debug)]
 enum UinputMsg {
     Event(InputEvent),
+}
+
+/// Constructs the set of evdev keycodes corresponding to the chosen movement preset.
+/// Arrow keys are automatically included in all sets.
+fn build_move_key_set(mode: Option<&MoveHotkeysMode>) -> HashSet<u16> {
+    let mut keys = HashSet::new();
+
+    // ALWAYS include standard Arrow Keys
+    keys.insert(Key::KEY_UP.code());
+    keys.insert(Key::KEY_DOWN.code());
+    keys.insert(Key::KEY_LEFT.code());
+    keys.insert(Key::KEY_RIGHT.code());
+
+    if let Some(m) = mode {
+        match m {
+            MoveHotkeysMode::Awsd => {
+                keys.insert(Key::KEY_W.code());
+                keys.insert(Key::KEY_A.code());
+                keys.insert(Key::KEY_S.code());
+                keys.insert(Key::KEY_D.code());
+            }
+            MoveHotkeysMode::Awsdqezc => {
+                keys.insert(Key::KEY_W.code());
+                keys.insert(Key::KEY_A.code());
+                keys.insert(Key::KEY_S.code());
+                keys.insert(Key::KEY_D.code());
+                keys.insert(Key::KEY_Q.code());
+                keys.insert(Key::KEY_E.code());
+                keys.insert(Key::KEY_Z.code());
+                keys.insert(Key::KEY_C.code());
+            }
+            MoveHotkeysMode::Numpad => {
+                // Keypad numbers 1, 3, 4, 5, 6, 7, 8, 9
+                keys.insert(Key::KEY_KP1.code());
+                keys.insert(Key::KEY_KP2.code());
+                keys.insert(Key::KEY_KP3.code());
+                keys.insert(Key::KEY_KP4.code());
+                keys.insert(Key::KEY_KP5.code());
+                keys.insert(Key::KEY_KP6.code());
+                keys.insert(Key::KEY_KP7.code());
+                keys.insert(Key::KEY_KP8.code());
+                keys.insert(Key::KEY_KP9.code());
+            }
+        }
+    }
+
+    keys
 }
 
 #[tokio::main]
@@ -72,16 +151,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = if let Some(cli_devices) = args.devices {
         info!("Running in CLI configuration mode.");
         let initial_delay_ms = args.initial_delay.unwrap_or(200);
-        let rapid_fire_delay_ms = args.rapid_fire_delay.unwrap_or(50);
+        let clock_default_ms = args.clock_default.unwrap_or(250);
+        let clock_move_ms = args.clock_move.unwrap_or(40);
         
         let devices = cli_devices.into_iter().map(|path| DeviceConfig {
             path,
-            rapid_fire_keys: None, // CLI mode defaults to applying rapid-fire to all keys
+            rapid_fire_keys: None,
         }).collect();
 
         Config {
             initial_delay_ms,
-            rapid_fire_delay_ms,
+            clock_default_ms,
+            clock_move_ms,
+            move_hotkeys: args.move_hotkeys,
             devices,
         }
     } else {
@@ -94,11 +176,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         toml::from_str(&config_contents).expect("Failed to parse TOML configuration")
     };
 
-    // Extract configuration values for safe passing into threads and format them to non-negative for Duration
     let global_initial_delay_ms = config.initial_delay_ms;
-    let global_rapid_fire_delay_ms = config.rapid_fire_delay_ms;
-    let initial_delay = Duration::from_millis(config.initial_delay_ms.max(0) as u64);
-    let rapid_fire_delay = Duration::from_millis(config.rapid_fire_delay_ms.max(0) as u64);
+    let clock_default_ms = config.clock_default_ms;
+    let clock_move_ms = config.clock_move_ms;
+
+    let initial_delay = Duration::from_millis(global_initial_delay_ms.max(0) as u64);
+    let duration_default = Duration::from_millis(clock_default_ms.max(0) as u64);
+    let duration_move = Duration::from_millis(clock_move_ms.max(0) as u64);
+
+    let move_key_set = build_move_key_set(config.move_hotkeys.as_ref());
 
     let (tx, mut rx) = mpsc::channel::<UinputMsg>(1024);
 
@@ -107,6 +193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Configure the virtual uinput
     let mut keys = evdev::AttributeSet::<Key>::new();
+
     // Keys to watch for
     for i in 1..255 {
         keys.insert(Key::new(i));
@@ -136,6 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let path = device_config.path.clone();
         let rapid_fire_keys = device_config.rapid_fire_keys.clone();
         let global_pressed_keys = global_pressed_keys.clone();
+        let move_key_set = move_key_set.clone();
 
         let handle = tokio::spawn(async move {
             let mut device = Device::open(&path).unwrap_or_else(|_| panic!("Failed to open {}", path));
@@ -157,8 +245,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let key_code = ev.code();
                     let value = ev.value(); // 1 = Down, 0 = Up, 2 = Repeat
 
-                    // Check if the delay values disable the custom rapid-fire logic
-                    let should_rapid_fire = if global_initial_delay_ms <= 0 || global_rapid_fire_delay_ms <= 0 {
+                    // Select rapid-fire interval based on key type (movement vs. default)
+                    let is_move_key = move_key_set.contains(&key_code);
+                    let active_interval_ms = if is_move_key { clock_move_ms } else { clock_default_ms };
+                    let rapid_fire_delay = if is_move_key { duration_move } else { duration_default };
+
+                    // Determine if rapid-fire applies
+                    let should_rapid_fire = if global_initial_delay_ms <= 0 || active_interval_ms <= 0 {
                         false
                     } else {
                         match &rapid_fire_keys {
@@ -170,7 +263,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Lock the single timer slot instead of the HashMap.
                     let mut timer_lock = active_timer.lock().await;
 
-                    if value == 1 { // Only real key down
+                    if value == 1 { // Real Key Down
                         debug!("REAL              : [{:?}] Key DOWN", key_code);
 
                         // Register key press in global state tracker
@@ -179,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             global_keys.insert(key_code, path.clone());
                         }
 
-                        // Send original keydown
+                         // Send original keydown
                         let _ = tx_clone.send(UinputMsg::Event(ev)).await;
 
                         if should_rapid_fire {
@@ -190,14 +283,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let tx_timer = tx_clone.clone();
                             let timer_handle = tokio::spawn(async move {
                                 sleep(initial_delay).await;
-                                debug!("VIRTUAL RAPID-FIRE: [{:?}] Started", key_code);
+                                debug!("VIRTUAL RAPID-FIRE: [{:?}] Started (Interval: {}ms)", key_code, active_interval_ms);
 
                                 loop {
-                                    // sleep(rapid_fire_delay).await;
                                     // Virtual Key Up
+                                    // sleep(rapid_fire_delay).await;
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::KEY, key_code, 0))).await;
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::SYNCHRONIZATION, 0, 0))).await;
-                                    
+
                                     // Virtual Key Down
                                     sleep(rapid_fire_delay).await;
                                     let _ = tx_timer.send(UinputMsg::Event(InputEvent::new(EventType::KEY, key_code, 1))).await;
@@ -206,7 +299,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             });
                             *timer_lock = Some((key_code, timer_handle));
                         }
-                    } else if value == 0 { // Only real key up
+                    } else if value == 0 { // Real Key Up
                         debug!("REAL              : [{:?}] Key UP", key_code);
 
                         // Remove key press from global state tracker
@@ -223,15 +316,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 *timer_lock = Some((active_key, handle));
                             }
                         }
-                        // Send the original keyup
                         let _ = tx_clone.send(UinputMsg::Event(ev)).await;
-                    } else if value == 2 { // Physical device repeat
+                    } else if value == 2 { // Physical Device Repeat
                         if !should_rapid_fire {
                             // Check how many keys are held across all devices
                             let global_keys = global_pressed_keys.lock().await;
                             
                             if global_keys.len() <= 1 {
-                                // SINGLE KEY ACTIVE: Pass native hardware repeat (value 2) clean proxying
                                 debug!("REAL              : [{:?}] Key REPEAT (Native Proxy)", key_code);
                                 let _ = tx_clone.send(UinputMsg::Event(ev)).await;
                             } else {

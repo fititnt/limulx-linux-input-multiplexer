@@ -1,8 +1,9 @@
 # linux-input-multiplexer/config.example.toml
 
-# Delays in milliseconds
 initial_delay_ms = 200
-rapid_fire_delay_ms = 100
+clock_default_ms = 250
+clock_move_ms = 40
+move_hotkeys = "awsdqezc" # options: "awsd", "awsdqezc", "numpad"
 
 
 [[devices]]

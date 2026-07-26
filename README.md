@@ -1,15 +1,15 @@
-# LIMulx Linux input multiplexer (v0.3.0 preview)
+# LIMulx Linux input multiplexer (v0.3.1 preview)
 Linux input multiplexer with independent per-device auto-repeat.
 Bypasses compositor Seat limitations to enable true Windows-like raw input
 and asynchronous multi-device response
 (TL;DR: also good competitive gaming).
 
-
 > **TL;DR:** Using this program while holding down "W" on a keyboard,
 > side button "7" on a gaming mouse, and "F13" on a footswitch will output
-> "W 7 F13 W 7 F13 W 7 F13 W 7 F13..." instead of only "F13 F13 F13 F13...".
+> "W 7 F13 W 7 F13 W 7 F13 W 7 F13..."(*) instead of only "F13 F13 F13 F13...".
 > This makes desktop Linux behave more like Windows,
 > without requiring cross-platform apps or games to (which would be a good idea) rework their internal input logic on Linux.
+> (Note: since >v0.3.1 using --move-hotkeys=[awsd|awsdqezc|numpad] this example would print less 7 and F13)
 
 
 ```bash
@@ -117,7 +117,6 @@ sudo ./target/release/limulx-linux-input-multiplexer -v --initial-delay 200 --ra
 On Windows:
 SPI_SETKEYBOARDSPEED; from 0 (2.5 r/s) to 31 (30/s); maximum on windows around 30.3r/s or 33ms repeat
 SPI_SETKEYBOARDDELAY: 0 (250s) to 3 (1s)
-
 
 -->
 
